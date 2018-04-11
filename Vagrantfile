@@ -7,14 +7,14 @@ Vagrant.configure("2") do |config|
 
   config.vm.box = "centos/7"
 
+  config.vm.define ENV['VAGRANT_BOX_NAME'] || 'simp_tpm2_rpm_builder'
 
   config.vm.provision 'shell', inline: <<-SHELL
 
-    yum install --enablerepo=extras -y docker vim-enhanced git libicu-devel \
+    yum install --enablerepo=extras -y vim-enhanced git libicu-devel \
                                        rpm-build rpmdevtools epel-release
-    yum install --enablerepo=epel -y aria2 elinks haveged
 
-    yum install --enablerepo=extras,epel -y libmocka-devel selinux-policy-devel \
+    yum install --enablerepo=extras,epel -y haveged libmocka-devel selinux-policy-devel \
                                             git make autoconf autoconf-archive \
                                             automake libtool gcc gcc-c++ \
                                             glibc-headers pkgconfig openssl-devel \
@@ -29,25 +29,27 @@ Vagrant.configure("2") do |config|
     systemctl start haveged
     systemctl enable haveged
 
-    # Install docker
-    # --------------------
-    # You can also append `-G vagrant` to `OPTIONS=` in /etc/sysconfig/docker
-    cat <<DOCKAH > /etc/docker/daemon.json
-{
-"live-restore": true,
-"group": "vagrant"
-}
-DOCKAH
-
-    # man docker-storage-setup
-    # https://bugzilla.redhat.com/show_bug.cgi?id=1316210
-    echo 'EXTRA_STORAGE_OPTIONS="--storage-opt overlay2.override_kernel_check=true"' >> /etc/sysconfig/docker-storage-setup
-    container-storage-setup
-    systemctl start docker
-    systemctl enable docker
-
-    chown -R vagrant /vagrant # TODO: why is this needed?
-    ls -lartZ /var/run/docker.sock
+###    # Install docker
+###    # --------------------
+###    yum install --enablerepo=extras,epel -y docker
+###
+###    # You can also append `-G vagrant` to `OPTIONS=` in /etc/sysconfig/docker
+###     cat <<DOCKAH > /etc/docker/daemon.json
+### {
+### "live-restore": true,
+### "group": "vagrant"
+### }
+### DOCKAH
+###
+###    # man docker-storage-setup
+###    # https://bugzilla.redhat.com/show_bug.cgi?id=1316210
+###    echo 'EXTRA_STORAGE_OPTIONS="--storage-opt overlay2.override_kernel_check=true"' >> /etc/sysconfig/docker-storage-setup
+###    container-storage-setup
+###    systemctl start docker
+###    systemctl enable docker
+###
+###    chown -R vagrant /vagrant # TODO: why is this needed?
+###    ls -lartZ /var/run/docker.sock
   SHELL
 
 
@@ -80,14 +82,16 @@ ENV
     cd /vagrant
     [[ -f Gemfile ]] && #{bash_env_string} bundle
 
-    # TODO: build in docker
-    cd simp-tpm2-tss/
-    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y
-    cd ../simp-tpm2-abrmd/
-    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y
-    cd ../simp-tpm2-tools/
-    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y
-    cd ..
+###    # TODO: build in docker
+###    cd simp-tpm2-tss/ && \
+###    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y && \
+###    cd ../simp-tpm2-abrmd/ && \
+###    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y && \
+###    cd ../simp-tpm2-tools/ && \
+###    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y
+###    cd ..
+
+    bash /vagrant/rebuild.sh
 
     sudo yum install -y wget
     wget wget https://downloads.sourceforge.net/project/ibmswtpm2/ibmtpm974.tar.gz
@@ -96,6 +100,14 @@ ENV
     tar -xavf ../ibmtpm974.tar.gz
     cd src
     make
+
+    # getting lazy, but:
+    cp tpm_server /vagrant/
+    cd /vagrant
+    ./tpm_server -rm &
+    # TPM command server listening on port 2321
+    # Platform server listening on port 2322
+
 ###      527  sudo /usr/local/sbin/tpm2-abrmd -t socket  -l stdout
 
 

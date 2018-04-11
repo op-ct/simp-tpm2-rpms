@@ -1,19 +1,27 @@
+%global selinuxtype targeted
+%global selinux_policyver 3.13.1-166
+%global moduletype contrib
+%global modulename tabrmd
+# SIMP customization:
+%global _prefix /usr/local
+%global _selinux_share /usr/share
 Name: simp-tpm2-abrmd
 Version: 1.2.0
 Release: 0%{?dist}
 Summary: A system daemon implementing TPM2 Access Broker and Resource Manager
 
-# SIMP customization:
-%define _prefix /usr/local
 
 License: BSD
 URL:     https://github.com/01org/tpm2-abrmd
-### Source0: https://github.com/01org/tpm2-abrmd/archive/%{version}/%{name}-%{version}.tar.gz
+### Source0: https://github.com/01org/tpm2-abrmd/archive/%%{version}/%%{name}-%%{version}.tar.gz
 Source0: %{name}-%{version}.tar.gz
 # upstream commit 418d49669a33f9e6b029787e3869b3a534bb7de8
 #Patch0: 0001-tcti-tabrmd-Fix-NULL-deref-bug-by-moving-debug-outpu.patch
 
+
 %{?systemd_requires}
+# tpm2-abrmd depends on tpm2-tss for sapi/tcti-device/tcti-socket libs
+BuildRequires: simp-tpm2-tss-devel >= 1.1.0-1%{?dist}
 BuildRequires: systemd
 BuildRequires: libtool
 BuildRequires: autoconf-archive
@@ -23,8 +31,6 @@ BuildRequires: pkgconfig(gio-unix-2.0)
 BuildRequires: pkgconfig(sapi)
 BuildRequires: pkgconfig(tcti-device)
 BuildRequires: pkgconfig(tcti-socket)
-# tpm2-abrmd depends on tpm2-tss-devel for sapi/tcti-device/tcti-socket libs
-BuildRequires: simp-tpm2-tss-devel >= 1.1.0-1%{?dist}
 
 %description
 tpm2-abrmd is a system daemon implementing the TPM2 access broker (TAB) and
@@ -33,24 +39,63 @@ Resource Manager (RM) spec from the TCG.
 %prep
 %autosetup -p1 -n %{name}-%{version}
 autoreconf -vif
-
-%build
+./bootstrap
 PKG_CONFIG_PATH=$PKG_CONFIG_PATH:%{_libdir}/pkgconfig %configure --disable-static --disable-silent-rules \
            --with-systemdsystemunitdir=%{_unitdir} \
            --with-udevrulesdir=%{_udevrulesdir}
+
+%build
 %make_build
+
+# SIMP addition: SELinux policies
+pushd selinux
+mkdir -p %{buildroot}%{_selinux_share}
+ln -s %{_selinux_share}/selinux %{buildroot}/%{_selinux_share}/
+%make_build TARGET="%{modulename}" SHARE="%{buildroot}%{_selinux_share}"
+popd
 
 %install
 %make_install
 rm -f %{buildroot}/%{_udevrulesdir}/tpm-udev.rules
 find %{buildroot}%{_libdir} -type f -name \*.la -delete
 
+# SIMP addition: SELinux policies
+install -d %{buildroot}%{_datadir}/selinux/packages
+install -d -p %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}
+install -p -m 644 %{_builddir}/%{name}-%{version}/selinux/%{modulename}.if %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}
+install -m 0644 %{_builddir}/%{name}-%{version}/selinux/%{modulename}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages
+
+
 %pre
+mkdir -p %{_datadir}
+
 getent group tss >/dev/null || groupadd -g 59 -r tss
 getent passwd tss >/dev/null || \
 useradd -r -u 59 -g tss -d /dev/null -s /sbin/nologin \
  -c "Account used by the tpm2-abrmd package to sandbox the tpm2-abrmd daemon" tss
 exit 0
+
+
+%post
+# Make sure our %{_libdir} is in the library path
+echo "%{_libdir}" > /etc/ld.so.conf.d/tpm2-abrmd.conf
+chmod 644 /etc/ld.so.conf.d/tpm2-abrmd.conf
+/sbin/ldconfig
+
+udevadm trigger
+
+%systemd_post tpm2-abrmd.service
+
+# restart the dbus daemon to load the dbus configuration updates
+pkill -HUP dbus-daemon
+
+%preun
+%systemd_preun tpm2-abrmd.service
+
+%postun
+rm -f /etc/ld.so.conf.d/tpm2-abrmd.conf
+/sbin/ldconfig
+%systemd_postun tpm2-abrmd.service
 
 %files
 %doc README.md CHANGELOG.md
@@ -64,8 +109,11 @@ exit 0
 %{_mandir}/man3/tss2_tcti_tabrmd_init_full.3*
 %{_mandir}/man7/tcti-tabrmd.7*
 %{_mandir}/man8/tpm2-abrmd.8*
+%attr(0644,root,root) %{_datadir}/selinux/packages/%{modulename}.pp.bz2
+%attr(0644,root,root) %{_datadir}/selinux/devel/include/%{moduletype}/%{modulename}.if
 
 
+# ------------------------------------------------------------------------------
 %package devel
 Summary: Headers, static libraries and package config files of tpm2-abrmd
 Requires: %{name}%{_isa} = %{version}-%{release}
@@ -81,19 +129,48 @@ required to build applications that use tpm2-abrmd.
 %{_libdir}/libtcti-tabrmd.so
 %{_libdir}/pkgconfig/tcti-tabrmd.pc
 
-# on package installation
-%post
-/sbin/ldconfig
-%systemd_post tpm2-abrmd.service
 
-%preun
-%systemd_preun tpm2-abrmd.service
+# ------------------------------------------------------------------------------
+%package selinux
+Summary: SELinux policies for tpm2-abrmd
+# SIMP selinux additions
+Requires: selinux-policy >= %{selinux_policyver}
+BuildRequires: selinux-policy-devel
+BuildRequires: selinux-policy
+Requires(post): selinux-policy-base >= %{selinux_policyver}
+Requires(post): libselinux-utils
+Requires(post): policycoreutils
+%if 0%{?fedora}
+Requires(post): policycoreutils-python-utils
+%else
+Requires(post): policycoreutils-python
+%endif
 
-%postun
-/sbin/ldconfig
-%systemd_postun tpm2-abrmd.service
+%description selinux
+This package contains SELinux policies for tpm2-abrmd.
 
-rchangelog
+%pre selinux
+%selinux_relabel_pre -s %{selinuxtype}
+
+%post selinux
+%selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{modulename}.pp.bz2
+
+%postun selinux
+# SIMP selinux
+if [ $1 -eq 0 ]; then
+  %selinux_modules_uninstall -s %{selinuxtype} %{modulename}
+fi
+
+%posttrans selinux
+%selinux_relabel_post -s %{selinuxtype}
+
+%files selinux
+%{_datadir}/selinux/packages/tabrmd.pp.bz2
+%{_datadir}/selinux/devel/include/contrib/tabrmd.if
+
+
+# ------------------------------------------------------------------------------
+%changelog
 * Tue Apr 10 2018 Chris Tessmer <chris.tessmer@onyxpoint.com> - 1.2.0-0
 - Re-package Fedora to port recent improvements back to EL7
 

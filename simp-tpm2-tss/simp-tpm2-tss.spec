@@ -1,4 +1,4 @@
-# Adapted from  
+# Adapted from
 #
 Name:           simp-tpm2-tss
 Version:        1.3.0
@@ -61,7 +61,7 @@ install -m 0644 -D -t %{buildroot}/%{_udevrulesdir}/ %{SOURCE1}
 %{_udevrulesdir}/60-tpm-udev.rules
 
 %package        devel
-Summary:        Headers and libraries for building apps that use tpm2-tss 
+Summary:        Headers and libraries for building apps that use tpm2-tss
 Requires:       %{name}%{_isa} = %{version}-%{release}
 
 %description    devel

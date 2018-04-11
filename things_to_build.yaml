@@ -28,3 +28,12 @@ simp-tpm2-simulator:
   :extras:
     TPM2_SIM__CMD_PORT: '2321'
     TPM2_SIM__PLATFORM_PORT: '2322'
+simp-tpm2-abrmd-selinux:
+  :type: :gitrepo
+  :build: 'yes'
+  :tag: 1.2.0
+  :url: https://github.com/tpm2-software/tpm2-abrmd
+    # replace their spec file with our spec file
+    :post_dl:
+    - 'rm -f tpm2-abrmd/*.spec'
+    - 'cp -v simp-*.spec tpm2-abrmd/'

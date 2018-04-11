@@ -53,6 +53,10 @@ PKG_CONFIG_PATH=$PKG_CONFIG_PATH:%{_libdir}/pkgconfig %configure \
 %{_bindir}/tpm2_*
 %{_mandir}/man1/tpm2_*.1*
 
+%post -p /sbin/ldconfig
+
+%postun -p /sbin/ldconfig
+
 %changelog
 * Mon Apr 9 2018 Chris Tessmer <chris.tessmer@onyxpoint.com> - 3.0.3-3
 - Tweak RPM for building EL7 RPMs
