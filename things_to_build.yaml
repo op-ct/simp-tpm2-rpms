@@ -10,6 +10,11 @@ simp-tpm2-tss:
     - git clone -- https://src.fedoraproject.org/rpms/tpm2-tss.git pagure-tpm2-tss
     - cd pagure-tpm2-tss && git checkout 075fc2f0d3cc476d7ecc99483c1e28c2e0855535
     - cp -rv pagure-tpm2-tss/*.rules "%{SOURCES_DIR}/"
+simp-tpm2-abrmd-selinux:
+  :type: :gitrepo
+  :build: 'yes'
+  :tag: 1.2.0
+  :url: https://github.com/tpm2-software/tpm2-abrmd
 simp-tpm2-abrmd:
   :type: :gitrepo
   :build: 'yes'
@@ -25,15 +30,3 @@ simp-tpm2-simulator:
   :build: 'yes'
   :tag: '1119'
   :url: https://sourceforge.net/projects/ibmswtpm2/files/ibmtpm%{TAG}.tar.gz/download
-  :extras:
-    TPM2_SIM__CMD_PORT: '2321'
-    TPM2_SIM__PLATFORM_PORT: '2322'
-simp-tpm2-abrmd-selinux:
-  :type: :gitrepo
-  :build: 'yes'
-  :tag: 1.2.0
-  :url: https://github.com/tpm2-software/tpm2-abrmd
-    # replace their spec file with our spec file
-    :post_dl:
-    - 'rm -f tpm2-abrmd/*.spec'
-    - 'cp -v simp-*.spec tpm2-abrmd/'

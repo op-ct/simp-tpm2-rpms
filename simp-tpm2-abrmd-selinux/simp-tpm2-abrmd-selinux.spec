@@ -4,14 +4,15 @@
 %global moduletype contrib
 %global modulename tabrmd
 
-Name: tpm2-abrmd-selinux
+Name: simp-tpm2-abrmd-selinux
 Version: 1.2.0
 Release: 1%{?dist}
 Summary: SELinux policies for tpm2-abrmd
 
 License: BSD
 URL:     https://github.com/tpm2-software/tpm2-abrmd
-Source0: https://github.com/tpm2-software/tpm2-abrmd/archive/%{version}/tpm2-abrmd-%{version}.tar.gz
+#Source0: https://github.com/tpm2-software/tpm2-abrmd/archive/%%{version}/tpm2-abrmd-%%{version}.tar.gz
+Source0: %{name}-%{version}.tar.gz
 
 BuildArch: noarch
 Requires: selinux-policy >= %{selinux_policyver}
@@ -32,11 +33,11 @@ Requires(post): policycoreutils-python
 SELinux policy modules for product.
 
 %prep
-%setup -q -n tpm2-abrmd-%{version}
+%setup -q -n %{name}-%{version}
 
 %build
 pushd selinux
-make TARGET="tabrmd" SHARE="%{_datadir}"
+%make_build TARGET="%{modulename}" SHARE="%{_datadir}"
 popd
 
 %pre

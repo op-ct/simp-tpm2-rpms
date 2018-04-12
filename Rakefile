@@ -3,11 +3,10 @@ require 'fileutils'
 require 'rake/clean'
 require 'yaml'
 
-
-
 module SIMP; end
 module SIMP::RPM; end
 class SIMP::RPM::SpecBuilder < Rake::TaskLib
+  CLEAN << 'dist'
 
   if Rake.verbose
     include FileUtils::Verbose
@@ -15,11 +14,23 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     include FileUtils
   end
 
+  def initialize
+    @things_to_download = YAML.load_file( yaml_config_path )
+    @dirs = {}
+    @dirs[:dist]               = File.expand_path('dist')
+    @dirs[:rpmbuild]           = File.expand_path('rpmbuild',@dirs[:dist])
+    @dirs[:tmp]                = File.expand_path('tmp',@dirs[:dist])
+    @dirs[:logs]               = File.expand_path('logs',@dirs[:tmp])
+    @dirs[:rpmbuild_sources]   = File.expand_path('SOURCES',@dirs[:rpmbuild])
+    @dirs[:rpmbuild_build]     = File.expand_path('BUILD',@dirs[:rpmbuild])
+    @dirs[:rpmbuild_buildroot] = File.expand_path('BUILDROOT',@dirs[:rpmbuild])
+    @dirs[:extra_sources_dir]  = File.expand_path('extra_sources',@dirs[:dist])
+  end
+
   # This method exists because `vagrant up` dereferences symlinks
   def yaml_config_path
-
     file_name = 'things_to_build.yaml'
-    _dir = File.dirname File.expand_path *Rake.application.find_rakefile_location
+    _dir = File.dirname File.expand_path Rake.application.find_rakefile_location.last
     _yaml_file = nil
     while _yaml_file.nil? && _dir !~ /^\/$/
       _file = File.join(_dir,file_name)
@@ -34,25 +45,14 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     _yaml_file
   end
 
-  def initialize
-    @things_to_download = YAML.load_file( yaml_config_path )
-    @dirs = {}
-    @dirs[:dist]               = File.expand_path('dist')
-    @dirs[:rpmbuild]           = File.expand_path('rpmbuild',@dirs[:dist])
-    @dirs[:tmp]                = File.expand_path('tmp',@dirs[:dist])
-    @dirs[:logs]               = File.expand_path('tmp',@dirs[:tmp])
-    @dirs[:rpmbuild_sources]   = File.expand_path('SOURCES',@dirs[:rpmbuild])
-    @dirs[:rpmbuild_build]     = File.expand_path('BUILD',@dirs[:rpmbuild])
-    @dirs[:rpmbuild_buildroot] = File.expand_path('BUILDROOT',@dirs[:rpmbuild])
-    @dirs[:extra_sources_dir]  = File.expand_path('extra_sources',@dirs[:dist])
-  end
-
+  # Download and untar a tarball into a new directory
   def dl_untar(url,dst)
     mkdir_p dst
     Dir.chdir dst
     sh "curl -sSfL '#{url}' | tar zxvf -"
   end
 
+  # clone a git repo into a new directory
   def git_clone(url,ref,dst)
     sh "git clone '#{url}' -b '#{ref}' '#{dst}'"
   end
@@ -78,6 +78,7 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   end
 
 
+  # Create a .tar.gz archive
   def tar_gz key, thing, dst
     _parent, _dir = File.dirname(dst), File.basename(dst)
     cwd = Dir.pwd
@@ -87,18 +88,14 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   end
 
 
+  # Return information from an RPM .spec file
   def spec_info spec_file
     info = {}
     cmd="rpm -q --define 'debug_package %{nil}' --queryformat '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' --specfile '#{spec_file}'"
-    cmd="rpm -q --define 'debug_package %{nil}' --queryformat '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' --specfile '#{spec_file}'"
     info[:basename], info[:version], info[:release], info[:arch] = %x{#{cmd}}.strip.split
-    info[:full_name]="#{info[:basename]}-#{info[:version]}-#{info[:release]}"
     info[:ver_name]="#{info[:basename]}-#{info[:version]}"
     info
   end
-
-  CLEAN << 'dist'
-
 
   def mk_dirs
     @dirs.each do |k,dir|
@@ -107,9 +104,8 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   end
 
   def _download(spec,cwd)
-    spec_path = File.expand_path(spec)
-    spec_path = File.expand_path( spec, cwd)
-    info      = spec_info(spec_path)
+    Dir.chdir File.dirname(spec)
+    info      = spec_info(spec)
     dl_dir    = File.expand_path("dist/#{info[:ver_name]}")
     dl_info   = @things_to_download[info[:basename]]
 
@@ -119,21 +115,24 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     # download extras (source1, etc)
     Dir.chdir dl_dir
     cmds = dl_info.fetch(:extras,{}).fetch(:post_dl,[])
-    cmds.each{ |cmd| sh cmd.gsub('%{SOURCES_DIR}',@dirs[:extra_sources_dir]) }
+    cmds.each do |cmd|
+       sh cmd.gsub('%{SOURCES_DIR}',@dirs[:extra_sources_dir])
+             .gsub('%{DOWNLOAD_DIR}',dl_dir)
+             .gsub('%{PROJECT_DIR}', cwd)
+    end
   end
 
   # All in one go because there's no time to be fancy this sprint
   def _rpm(spec,cwd)
-    spec_path = File.expand_path( spec, cwd)
+    Dir.chdir cwd
+    spec_path = File.expand_path(spec)
     info      = spec_info(spec_path)
     dl_dir    = File.expand_path("#{info[:ver_name]}",@dirs[:dist])
-    dl_info   = @things_to_download[info[:basename]]
 
     Dir.chdir File.dirname(dl_dir)
     tar_file = File.join(@dirs[:rpmbuild_sources], "#{info[:ver_name]}.tar.gz")
     puts "===================================== TAR ============================\n" * 7
-    # Build process got cranky without .git to reference
-    ###tar_cmd='tar --owner 0 --group 0 --exclude-vcs ' \
+    # NOTE: no --exclude-vcs; tpm2-* ./bootstrap runs get cranky without .git/
     tar_cmd='tar --owner 0 --group 0 ' \
       "-cpzf #{tar_file} #{File.basename dl_dir}"
     sh tar_cmd
@@ -167,13 +166,8 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   end
 
   def define_tasks
-    cwd = Dir.pwd
-
     Dir[ '*.spec' ].each do |spec|
-      spec_path = File.expand_path(spec)
-      info = spec_info(spec)
-      dl_dir = File.expand_path("dist/#{info[:ver_name]}")
-
+    cwd = File.expand_path(File.dirname(spec))
       namespace :src do
         task :mkdirs do
           mk_dirs

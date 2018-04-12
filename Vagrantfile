@@ -82,35 +82,34 @@ ENV
     cd /vagrant
     [[ -f Gemfile ]] && #{bash_env_string} bundle
 
-###    # TODO: build in docker
-###    cd simp-tpm2-tss/ && \
-###    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y && \
-###    cd ../simp-tpm2-abrmd/ && \
-###    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y && \
-###    cd ../simp-tpm2-tools/ && \
-###    bundle exec rake clean && bundle exec rake pkg:rpm && sudo yum install dist/simp-tpm2-*.rpm -y
-###    cd ..
+    # getting lazy, and building the simulator without an RPM:
+    # build
+    pgrep tpm_server &> /dev/null
 
+    if [ $? -ne 0 ]; then
+      sudo yum install -y wget
+      wget wget https://downloads.sourceforge.net/project/ibmswtpm2/ibmtpm974.tar.gz
+      mkdir ibmtpm974
+      cd ibmtpm974/
+      tar -xavf ../ibmtpm974.tar.gz
+      cd src
+      make
+      # start
+      cp tpm_server /vagrant/
+      cd /vagrant
+      ./tpm_server -rm &> /vagrant/tpm_server.$(date +%Y%m%d.%H%M).log &
+
+      [ $? -ne 0 ] && { echo "FAIL: ibmswtpm2 failed to start" && exit 1; }
+    fi
+
+    # TODO: build in docker
     bash /vagrant/rebuild.sh
 
-    sudo yum install -y wget
-    wget wget https://downloads.sourceforge.net/project/ibmswtpm2/ibmtpm974.tar.gz
-    mkdir ibmtpm974
-    cd ibmtpm974/
-    tar -xavf ../ibmtpm974.tar.gz
-    cd src
-    make
-
-    # getting lazy, but:
-    cp tpm_server /vagrant/
-    cd /vagrant
-    ./tpm_server -rm &
-    # TPM command server listening on port 2321
-    # Platform server listening on port 2322
-
-###      527  sudo /usr/local/sbin/tpm2-abrmd -t socket  -l stdout
-
-
-
+    sudo rpm -Uvh https://yum.puppetlabs.com/puppetlabs-release-pc1-el-7.noarch.rpm
+    sudo yum install puppet-agent
+    sudo /opt/puppetlabs/bin/puppet module install simp-tpm
+    sudo rm -rf /etc/puppetlabs/code/environments/production/modules/tpm
+    sudo git clone https://github.com/simp/pupmod-simp-tpm.git /etc/puppetlabs/code/environments/production/modules/tpm
+    sudo /opt/puppetlabs/bin/puppet module list --tree
 SHELL
 end
