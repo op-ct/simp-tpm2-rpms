@@ -15,6 +15,11 @@ simp-tpm2-abrmd-selinux:
   :build: 'yes'
   :tag: 1.2.0
   :url: https://github.com/tpm2-software/tpm2-abrmd
+  :extras:
+    # Should probably be a PATCH if we get stuck with tpm2-abrmd 1.2.0 for long
+    :post_dl:
+    - rm -f '%{SOURCES_DIR}/selinux/tabrmd.te'
+    - cp -rv '%{PROJECT_DIR}/tabrmd.te' '%{DOWNLOAD_DIR}/selinux/'
 simp-tpm2-abrmd:
   :type: :gitrepo
   :build: 'yes'

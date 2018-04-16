@@ -1,0 +1,46 @@
+policy_module(tabrmd, 0.0.2)
+
+########################################
+#
+# Declarations
+#
+# From https://github.com/tpm2-software/tpm2-abrmd/commit/d2d1d0787ef28fe588b74a8084c779bd64963219
+
+require {
+  type unreserved_port_t;
+  class tcp_socket { connect create name_connect setopt };
+}
+
+type tabrmd_t;
+type tabrmd_exec_t;
+init_daemon_domain(tabrmd_t, tabrmd_exec_t)
+
+allow tabrmd_t self:unix_dgram_socket { create_socket_perms };
+
+
+# SIMP modifications:
+# ------------------------------------------------------------------------------
+# Permit tpm2-abrmd to create a socket connection for TCTI (required for TPM
+# simulator)
+allow tabrmd_t self:tcp_socket { connect create create_stream_socket_perms };
+
+# Permit tpm2-abrmd to connect to the (currently unpackaged and unconfined)
+# TPM 2.0 Simulator (ports 2321 and 2322).
+#
+#   see: https://www.wismutlabs.com/blog/fiddling-with-selinux-policies/
+#
+allow tabrmd_t unreserved_port_t:tcp_socket name_connect;
+# ------------------------------------------------------------------------------
+
+# Access /dev/tpm*
+dev_rw_tpm(tabrmd_t)
+
+logging_send_syslog_msg(tabrmd_t)
+
+optional_policy(`
+    dbus_stub()
+    dbus_system_domain(tabrmd_t, tabrmd_exec_t)
+    allow system_dbusd_t tabrmd_t:unix_stream_socket rw_stream_socket_perms;
+')
+
+
