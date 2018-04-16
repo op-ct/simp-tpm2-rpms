@@ -30,7 +30,8 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   # This method exists because `vagrant up` dereferences symlinks
   def yaml_config_path
     file_name = 'things_to_build.yaml'
-    _dir = File.dirname File.expand_path Rake.application.find_rakefile_location.last
+    _dir = File.expand_path Rake.application.find_rakefile_location.last
+    puts "===== Looking in '#{_dir}'..."
     _yaml_file = nil
     while _yaml_file.nil? && _dir !~ /^\/$/
       _file = File.join(_dir,file_name)
