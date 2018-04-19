@@ -1,0 +1,16 @@
+# copy this file into /etc/systemd/system
+[Unit]
+Description=TPM2 Simulator
+
+[Service]
+Type=dbus
+Restart=no
+EnvironmentFile=-/etc/default/tpm2-simulator
+BusName=com.ibm.tpm2.tpm2-simulator
+StandardOutput=syslog
+ExecStart=/usr/local/bin/tpm2-simulator
+User=tss
+
+[Install]
+WantedBy=multi-user.target
+
