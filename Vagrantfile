@@ -25,7 +25,7 @@ Vagrant.configure("2") do |config|
                                          rpm-build rpmdevtools epel-release \
                                          wget
 
-      yum install --enablerepo=extras,epel -y haveged libmocka-devel selinux-policy-devel \
+      yum install --enablerepo=extras,epel -y haveged selinux-policy-devel \
                                               git make autoconf autoconf-archive \
                                               automake libtool gcc gcc-c++ \
                                               glibc-headers pkgconfig openssl-devel \
