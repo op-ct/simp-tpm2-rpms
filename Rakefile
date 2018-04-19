@@ -5,6 +5,10 @@ require 'yaml'
 
 module SIMP; end
 module SIMP::RPM; end
+
+
+# Download sources, scaffold rpmbuild trees, and build RPMs from .spec files
+#
 class SIMP::RPM::SpecBuilder < Rake::TaskLib
   CLEAN << 'dist'
 
@@ -14,8 +18,9 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     include FileUtils
   end
 
-  def initialize
-    @things_to_download = YAML.load_file( yaml_config_path )
+
+  def initialize( yaml_config_path = nil )
+    @things_to_download = YAML.load_file( yaml_config_path || get_yaml_config_path )
     @dirs = {}
     @dirs[:dist]               = File.expand_path('dist')
     @dirs[:rpmbuild]           = File.expand_path('rpmbuild',@dirs[:dist])
@@ -28,7 +33,7 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   end
 
   # This method exists because `vagrant up` dereferences symlinks
-  def yaml_config_path
+  def get_yaml_config_path
     file_name = 'things_to_build.yaml'
     _dir = File.expand_path Rake.application.find_rakefile_location.last
     puts "===== Looking in '#{_dir}'..."

@@ -30,6 +30,22 @@ simp-tpm2-tools:
   :build: 'yes'
   :tag: 3.0.2
   :url: https://github.com/tpm2-software/tpm2-tools
+#
+# TPM2.0 simulator
+#
+# Build 974:
+#   * Is what tpm2-tools 3.0.* is tested against
+#   * TPM specification draft revision 142, with errata to revision 138.
+# Build 1119 supports:
+#   * Nuvoton TPM vendor-specific commands
+#   * Support for OpenSSL 1.1.x
+#   * The TPM starts powered up, so the initial power up command is not necessary.
+#   * An update to TPM specification draft revision 146, which is avalable for
+#     public review, including changes to TPM2_CreateLoaded and
+#     TPM2_EncryptDecrypt.
+#
+# See: https://sourceforge.net/p/ibmswtpm2/wiki/Home/
+#
 simp-tpm2-simulator:
   :type: :targz
   :build: 'yes'
