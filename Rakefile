@@ -7,20 +7,26 @@ module SIMP; end
 module SIMP::RPM; end
 
 
-# Download sources, scaffold rpmbuild trees, and build RPMs from .spec files
+# Download, munge, stage, and build RPMs from .spec files
+#
+# Features:
+# - downloads sources usin `git clone` OR `curl`
+# - run post-clone commands for munging or additional prep
+# - scaffold rpmbuild trees
+# - build tar, srpm, and rpm files
 #
 class SIMP::RPM::SpecBuilder < Rake::TaskLib
   CLEAN << 'dist'
 
-  if Rake.verbose
+  if Rake.verbose == true
     include FileUtils::Verbose
   else
     include FileUtils
   end
 
 
-  def initialize( yaml_config_path = nil )
-    @things_to_download = YAML.load_file( yaml_config_path || get_yaml_config_path )
+  def initialize( config_hash )
+    @things_to_download = config_hash
     @dirs = {}
     @dirs[:dist]               = File.expand_path('dist')
     @dirs[:rpmbuild]           = File.expand_path('rpmbuild',@dirs[:dist])
@@ -33,10 +39,9 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
   end
 
   # This method exists because `vagrant up` dereferences symlinks
-  def get_yaml_config_path
-    file_name = 'things_to_build.yaml'
+  def self.find_yaml_config_path( file_name )
     _dir = File.expand_path Rake.application.find_rakefile_location.last
-    puts "===== Looking in '#{_dir}'..."
+    puts "===== Looking for yaml config file in '#{_dir}'..." if Rake.verbose == true
     _yaml_file = nil
     while _yaml_file.nil? && _dir !~ /^\/$/
       _file = File.join(_dir,file_name)
@@ -47,8 +52,13 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
         _dir = File.dirname _dir
       end
     end
-    fail "ERROR: couldn't find #{file_name}" unless _yaml_file
+    fail "ERROR: couldn't find yaml config file '#{file_name}'" unless _yaml_file
     _yaml_file
+  end
+
+  def self.load_config(file_name='things_to_build.yaml')
+    _file = File.file?(file_name) ? file_name : find_yaml_config_path( file_name )
+    YAML.load_file( _file )
   end
 
   # Download and untar a tarball into a new directory
@@ -65,8 +75,8 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
 
 
   # Downloads via git clone or URL for targz
-  def download( url, dir, type, tag=nil )
-    url = url.gsub('%{TAG}',tag) if tag
+  def download( url, dir, type, version=nil, extras=nil )
+    url = url.gsub('%{VERSION}',version) if version
     Dir.chdir File.dirname(dir)
     if File.directory? dir
       warn "WARNING: path '#{dir}' already exists; aborting download"
@@ -76,7 +86,7 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     when :targz
       dl_untar url, dir
     when :gitrepo
-      git_clone url, tag, dir
+      git_clone url, version, dir
     else
       fail "ERROR: :type is not :targz or :gitrepo (#{dl_info.inspect})"
     end
@@ -116,7 +126,7 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     dl_info   = @things_to_download[info[:basename]]
 
     # download the source0
-    download(dl_info[:url], dl_dir, dl_info[:type], dl_info[:tag])
+    download(dl_info[:url], dl_dir, dl_info[:type], dl_info[:version])
 
     # download extras (source1, etc)
     Dir.chdir dl_dir
@@ -128,7 +138,8 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     end
   end
 
-  # All in one go because there's no time to be fancy this sprint
+  # All steps done in one go, because there's no time to be fancy this sprint
+  # TODO: break up steps
   def _rpm(spec,cwd)
     Dir.chdir cwd
     spec_path = File.expand_path(spec)
@@ -138,11 +149,11 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
     Dir.chdir File.dirname(dl_dir)
     tar_file = File.join(@dirs[:rpmbuild_sources], "#{info[:ver_name]}.tar.gz")
     puts "===================================== TAR ============================\n" * 7
-    # NOTE: no --exclude-vcs; tpm2-* ./bootstrap runs get cranky without .git/
-    tar_cmd='tar --owner 0 --group 0 ' \
-      "-cpzf #{tar_file} #{File.basename dl_dir}"
+    # NOTE: We don't use ` --exclude-vcs` by default.  Some build scripts
+    #       (notably: the tpm2-* projects' ./bootstrap) get cranky without a
+    #       .git/ directory
+    tar_cmd="tar --owner 0 --group 0 -cpzf #{tar_file} #{File.basename dl_dir}"
     sh tar_cmd
-    puts "------------------- cp -r #{File.join(@dirs[:extra_sources_dir],'.')} #{@dirs[:rpmbuild_sources]}"
     FileUtils.cp_r(File.join(@dirs[:extra_sources_dir],'.'), @dirs[:rpmbuild_sources])
 
     Dir.chdir cwd
@@ -196,7 +207,7 @@ class SIMP::RPM::SpecBuilder < Rake::TaskLib
 
 end
 
-builder = SIMP::RPM::SpecBuilder.new
+builder = SIMP::RPM::SpecBuilder.new SIMP::RPM::SpecBuilder.load_config('things_to_build.yaml')
 
 builder.define_tasks
 
